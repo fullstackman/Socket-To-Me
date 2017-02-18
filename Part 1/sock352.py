@@ -5,17 +5,48 @@ import socket as syssock
 import struct
 import sys
 
-var transmitter
-var receiver
-basicSocket
+transmitter = ""
+receiver = ""
+mainSocket = ""
+sock352PktHdrData = "!12B" #'!B_BB_BBB__B_'0
+#each one of these are represented as a B
+version = 0x1
+opt_ptr = 0x0
+protocol = 0x0
+checksum = 0x0
+source_port = 0x0
+dest_port = 0x0
+window = 0x0
+#header_len = struct.calcsize(sock352PktHdrData)
+header_len = 12
+
+"""
+by = bytes(st, "utf-8")
+by += b"0" * (100 - len(by))
+print(by)
+"""
+
+"""
+Flag Name       (Hex) Value     (Binary) Value  (Binary) Meaning
+SOCK352_SYN     0x01            00000001        Connection initiation
+SOCK352_FIN     0x02            00000010        Connection end
+SOCK352_ACK     0x04            00000100        Acknowledgement #
+SOCK352_RESET   0x08            00001000        Reset the connection
+SOCK352_HAS_OPT 0xA0            00010000        Option field is valid
+"""
 
 # this init function is global to the class and
 # defines the UDP ports all messages are sent
 # and received from.
-def init(UDPportTx,UDPportRx):   # initialize your UDP socket here
+def init(UDPportTx,UDPportRx):
+    global mainSocket, transmitter, receiver
+
     # create a UDP/datagram socket 
     # bind the port to the Rx (receive) port number
-    syssock.create()
+    mainSocket = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
+    transmitter = UDPportTx
+    receiver = UDPportRx
+    #mainSocket.bind( (UDPportTx, int(UDPportRx) ) )  #'localhost',4512
     pass 
     
 class socket:
@@ -34,23 +65,32 @@ class socket:
         return 
 
     def connect(self,address):  # fill in your code here
-        global UDPportTx  # example using a variable global to the Python module 
-
-        #  create a new sequence number 
+        global UDPportTx, sock352PktHdrData, header_len, version, opt_ptr, protocol, checksum, source_port, dest_port, window
+        #  create a new sequence number
         #  create a new packet header with the SYN bit set in the flags (use the Struct.pack method)
-        #  also set the other fields (e.g sequence #) 
+
+        flags = 0x01
+        sequence_no = 1
+        ack_no = sequence_no
+        payload_len = 33
+
+        udpPkt_hdr_data = struct.Struct(sock352PktHdrData)
+        header = udpPkt_hdr_data.pack(version, flags, opt_ptr, protocol, header_len, checksum, source_port, dest_port, sequence_no, ack_no, window, payload_len)
+        
+        #  also set the other fields (e.g sequence #)
         #   add the packet to the outbound queue
         #   set the timeout
         #      wait for the return SYN
         #        if there was a timeout, retransmit the SYN packet 
         #   set the outbound and inbound sequence numbers  
-        return 
+        return header
     
     def listen(self,backlog):
         # MAYBE Call syssock.listen
         return
 
     def accept(self):
+        print('\tWe are waiting for accept!')
         (clientsocket, address) = (1,1)  # change this to your code
         # call  __sock352_get_packet() until we get a new conection
         # check the the connection list - did we see a new SYN packet?
@@ -104,23 +144,6 @@ class socket:
     #           send an ACK packet back with the correct sequence number
     #          else if it's nothing it's a malformed packet.
     #              send a reset (RST) packet with the sequence number
-    '''
-            chack the version number
-            chacker the header length
-            gth the flag settings
-            get seq/ack numbers
-            if(connection setup)
-                create new fragment list
-                send syn packet back with correct sequence number
-                wakeup any headers waiting for a connection via accept
-            else if(connected server down)
-                send fin packet
-                remove fragment list
-            else if(data packet)
-                check sequence number, add to fragment list
-                send ack on that sequence number
-            else
-                packet is corrupted. send a RST packet
-        '''
+    
         pass
     
