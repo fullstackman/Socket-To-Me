@@ -10,7 +10,7 @@ import time
 import struct 
 import md5
 import os 
-import sock352t
+import sock352
 
 def main():
     # parse all the arguments to the client 
@@ -58,12 +58,12 @@ def main():
     # different machines, we can re-use the same
     # ports. 
     if (udpportTx):
-        sock352t.init(udpportTx,udpportRx)
+        sock352.init(udpportTx,udpportRx)
     else:
-        sock352t.init(udpportRx,udpportRx)
+        sock352.init(udpportRx,udpportRx)
 
     # create a socket and connect to the remote server
-    s = sock352t.socket()
+    s = sock352.socket()
     s.connect((destination,port))
     
     # send the size of the file as a 4 byte integer
@@ -111,10 +111,14 @@ def main():
     if (sent != len(digest)):
         raise RuntimeError("socket broken")
 
-    print ("client1: sent %d bytes in %0.6f seconds, %0.6f MB/s " % (filesize, lapsed_seconds, (filesize/lapsed_seconds)/(1024*1024)))
+    if (lapsed_seconds > 0.0):
+        print ("client1: sent %d bytes in %0.6f seconds, %0.6f MB/s " % (filesize, lapsed_seconds, (filesize/lapsed_seconds)/(1024*1024)))
+    else:
+        print ("client1: sent %d bytes in %d seconds, inf MB/s " % (filesize, lapsed_seconds))        
 
+    fd.close()
+    s.close()
 # this gives a main function in Python
 if __name__ == "__main__":
     main()
-
 

@@ -55,11 +55,11 @@ def main():
     # need to be different, otherwise we can
     # use the same ports
     if (udpportTx):
-        sock352t.init(udpportTx,udpportRx)
+        sock352.init(udpportTx,udpportRx)
     else:
-        sock352t.init(udpportRx,udpportRx)
+        sock352.init(udpportRx,udpportRx)
 
-    s = sock352t.socket()
+    s = sock352.socket()
 
     # set the fragment size we will read on 
     FRAGMENTSIZE = 4096
@@ -67,7 +67,7 @@ def main():
     # binding the host to empty allows reception on
     # all network interfaces
     s.bind(('',port))
-    s.listen(5)
+    s.listen() #had a value of 5 but maybe that was the professor's mistake?
 
     # when accept returns, the client is connected 
     (s2,address) = s.accept() 
@@ -117,7 +117,10 @@ def main():
         if (client_byte != server_byte):
             print( "digest failed at byte %d %c %c " % (i,client_byte,server_byte))
 
-    print ("server1: received %d bytes in %0.6f seconds, %0.6f MB/s " % (filelen, lapsed_seconds, (filelen/lapsed_seconds)/(1024*1024)))
+    if (lapsed_seconds > 0.0):
+        print ("server1: received %d bytes in %0.6f seconds, %0.6f MB/s " % (filelen, lapsed_seconds, (filelen/lapsed_seconds)/(1024*1024)))
+    else:
+        print ("server1: received %d bytes in %d seconds, inf MB/s " % (filelen, lapsed_seconds))
     fd.close()
     s2.close()
     
