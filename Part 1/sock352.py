@@ -4,6 +4,7 @@ import binascii
 import socket as syssock
 import struct
 import sys
+import errno
 
 transmitter = ""
 receiver = ""
@@ -46,8 +47,10 @@ def init(UDPportTx,UDPportRx):
     mainSocket = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
     transmitter = UDPportTx
     receiver = UDPportRx
-    #mainSocket.bind( (UDPportTx, int(UDPportRx) ) )  #'localhost',4512
-    pass 
+    mainSocket.bind( ('localhost', int(UDPportRx) ) )  #'localhost', receiver port #
+    #mainSocket.settimeout(2)
+    print('Initialization complete!')
+    return 
     
 class socket:
     
@@ -61,11 +64,23 @@ class socket:
         return 
 
     def connect(self,address):  # fill in your code here
-        global UDPportTx, sock352PktHdrData, header_len, version, opt_ptr, protocol, checksum, source_port, dest_port, window
-        
-        print("\tInitiating a conection...")
-        print(address[0])
-        print(address[1])
+        global mainSocket, sock352PktHdrData, header_len, version, opt_ptr, protocol, checksum, source_port, dest_port, window
+        print("\tInitiating a conection on %s" % (transmitter) )
+        print("\t%d bytes sent!" % (mainSocket.sendto("It's a trap!\n", (address[0], int(transmitter)) ) ) )
+        response = mainSocket.recv(20)
+        """
+        response = 0
+        counter = 0
+        while(response == 0):
+            counter += 1;
+            if(counter % 5 == 0):
+                    print('\t\tWaiting for a response...')
+            try:
+                response = mainSocket.recv(20)
+            except syssock.error:
+                response = 0
+        """
+        print("\tGot this response: %s" % (response) )
         #  create a new sequence number
         #  create a new packet header with the SYN bit set in the flags (use the Struct.pack method)
         #  also set the other fields (e.g sequence #)
@@ -79,7 +94,6 @@ class socket:
         
         #   add the packet to the outbound queue
         #   set the timeout
-        mainSocket.settimeout(0.000001)
         #      wait for the return SYN
         #        if there was a timeout, retransmit the SYN packet
         #   set the outbound and inbound sequence numbers
@@ -88,9 +102,16 @@ class socket:
     
 
     def accept(self):
-        print('\n\tWe are waiting for accept!\n')
-        (clientsocket, address) = (1,1)  # change this to your code
-        # call  __sock352_get_packet() until we get a new conection
+        global mainSocket
+
+        print('\tWe are waiting for a connection on %s\n' % (receiver) )
+        
+        # call  __sock352_get_packet() until we get a new connection
+        (message, address) = mainSocket.recvfrom(50)
+        print("\tAccepted this message: %s" % message)
+        mainSocket.sendto("We are connected!", address)
+        clientsocket = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
+        #self.__sock352_get_packet()
         # check the the connection list - did we see a new SYN packet?
         # This will implement the handshake protocol
         return (clientsocket,address)
@@ -101,8 +122,8 @@ class socket:
         return
 
     def listen(self,buffer): #null code for part 1 
-        pass 
-        return 
+        print("\tWe are listening!\n")
+        return
 
     def send(self,buffer):
         global UDPportTx  # example using a variable global to the Python module 
@@ -130,6 +151,24 @@ class socket:
     
     def  __sock352_get_packet(self):
         global mainSocket
+        """
+        check the version number
+        check the header length
+        get the flag settings
+        get seq/ack numbers
+        if(connection setup)
+            create new fragment list
+            send syn packet back with correct sequence number
+            wakeup any headers waiting for a connection via accept
+        else if(connected server down)
+            send fin packet
+            remove fragment list
+        else if(data packet)
+            check sequence number, add to fragment list
+            send ack on that sequence number
+        else
+            packet is corrupted. send a RST packet
+        """
         #mainSocket.recvfrom(4096)
         # There is a differenct action for each packet type, based on the flags
         
@@ -146,5 +185,5 @@ class socket:
         #          else if it's nothing it's a malformed packet.
         #              send a reset (RST) packet with the sequence number
         print('\tget_packet was called\n')
-        return
+        return 0
     
