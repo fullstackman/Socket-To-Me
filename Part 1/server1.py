@@ -67,7 +67,7 @@ def main():
     # binding the host to empty allows reception on
     # all network interfaces
     s.bind(('',port))
-    s.listen() #had a value of 5 but maybe that was the professor's mistake?
+    s.listen(5)
 
     # when accept returns, the client is connected 
     (s2,address) = s.accept() 
