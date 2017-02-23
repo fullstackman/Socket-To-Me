@@ -22,6 +22,7 @@ dest_port = 0x0
 window = 0x0
 #header_len = struct.calcsize(sock352PktHdrData)
 header_len = 12
+deliveredData = ""
 
 """
 by = bytes(st, "utf-8")
@@ -47,9 +48,12 @@ def init(UDPportTx,UDPportRx):
     # create a UDP/datagram socket 
     # bind the port to the Rx (receive) port number
     mainSocket = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
-    transmitter = UDPportTx
-    receiver = UDPportRx
-    mainSocket.bind( ('localhost', int(UDPportRx) ) )  #'localhost', receiver port #
+    receiver = int(UDPportRx)
+    if(UDPportTx == ''):
+        transmitter = receiver
+    else:
+        transmitter = int(UDPportTx)
+    mainSocket.bind( ('', receiver) )  #'localhost', receiver port #
     #mainSocket.settimeout(2)
     print('Initialization complete!')
     return 
@@ -58,12 +62,12 @@ class socket:
     
     def __init__(self):  # fill in your code here
         # create any lists/arrays/hashes you need
-        
+        print("\tReturning your new 352-socket!")
         return
     
-    def bind(self,address):
-       # null function for part 1 
-        return 
+    def bind(self,address):   # null function for part 1 
+        print("\tWe are binding!\n")
+        return
 
     def connect(self,address):
         global mainSocket
@@ -86,10 +90,10 @@ class socket:
         #        if there was a timeout, retransmit the SYN packet
         while(flag != 0x01):
             print("\t%d bytes sent!" % (mainSocket.sendto(header,
-                (address[0], int(transmitter)) ) ) )
+                (address[0], transmitter) ) ) )
             flag = self.__sock352_get_packet()
         # We are safe to establich this UDP connection to the other host
-        mainSocket.connect( (address[0], int(transmitter)) )
+        mainSocket.connect( (address[0], transmitter) )
         header = self.__make_header(0x04, 1, 1, 0)
         print("\t%d confirmation bytes sent!" % (mainSocket.send(header) ) )
         #   set the outbound and inbound sequence numbers
@@ -97,7 +101,7 @@ class socket:
         return header
 
     def accept(self):
-        global mainSocket, simulatedDrop
+        global mainSocket, simulatedDrop, receiver
 
         # Set this variable to simulate the server not receiving a packet
         #simulatedDrop += 1
@@ -114,8 +118,10 @@ class socket:
         #TODO: send reset on timeout
         while(flag != 0x04):
             flag = self.__sock352_get_packet()
-        print("\tAcquired a connection!")
-        clientsocket = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
+        print("\tAcquired a connection! Calling new init...")
+        clientsocket = socket() #init('',receiver)
+        #syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
+        #clientsocket.bind( ('', receiver) )
         return (clientsocket,otherHostAddress)
   
     def close(self):   # fill in your code here
@@ -128,8 +134,8 @@ class socket:
         return
 
     def send(self,buffer):
-        global UDPportTx  # example using a variable global to the Python module 
-        bytessent = 0     # fill in your code here
+        global mainSocket, header_len
+        bytesSent = 0
         # make sure the correct fields are set in the flags
         # make sure the sequence and acknowlegement numbers are correct
         # create a new sock352 header using the struct.pack
@@ -137,21 +143,28 @@ class socket:
         # send the UDP packet to the destination and transmit port
         # set the timeout
         # wait or check for the ACK or a timeout
-
-        return bytesreceived 
+        header = self.__make_header(0x03,0,0,len(buffer))
+        bytesSent = mainSocket.send(header+buffer)
+        return bytesSent - header_len
 
     def recv(self,bytes_to_receive):
+        global mainSocket, deliveredData
+        print("\tStarted the recv call!\n\n")
+        deliveredData = ""
         # call __sock352_get_packet() to get packets (polling)
         # check the list of received fragements
         # copy up to bytes_to_receive into a buffer
         # return the buffer if there is some data
-        pass
+        flag = -1
+        while(flag != 0x03):
+            flag = self.__sock352_get_packet()
+        return deliveredData
     
     # this is an internal function that demultiplexes all incomming packets
     # it update lists and data structures used by other methods
     
     def  __sock352_get_packet(self):
-        global mainSocket, sock352PktHdrData, otherHostAddress, simulatedDrop
+        global mainSocket, sock352PktHdrData, otherHostAddress, deliveredData, simulatedDrop
         """
         check the version number
         check the header length
@@ -196,6 +209,10 @@ class socket:
         #      else if it is a data packet
         #      check the sequence numbers, add to the list of received fragments
         #      send an ACK packet back with the correct sequence number
+        elif(flag == 0x03):
+            deliveredData = data_msg
+            return flag
+        #   else if it is an ACK packet...
         elif(flag == 0x04):
             return flag
         #   If we get a reset packet, ignore it. The calling function should
@@ -216,7 +233,7 @@ class socket:
         global sock352PktHdrData, header_len, version, opt_ptr, protocol
         #TODO: figure out line breaks!
         global checksum, source_port, dest_port, window
-
+        
         flags = givenFlag
         sequence_no = givenSeqNo
         ack_no = givenAckNo
