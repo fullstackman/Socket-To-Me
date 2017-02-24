@@ -95,7 +95,7 @@ class socket:
         # We are safe to establich this UDP connection to the other host
         mainSocket.connect( (address[0], transmitter) )
         header = self.__make_header(0x04, 1, 1, 0)
-        print("\t%d confirmation bytes sent!" % (mainSocket.send(header) ) )
+        print("\t%d confirmation bytes sent!\n" % (mainSocket.send(header) ) )
         #   set the outbound and inbound sequence numbers
 
         return header
@@ -136,6 +136,7 @@ class socket:
     def send(self,buffer):
         global mainSocket, header_len
         bytesSent = 0
+        msglen = len(buffer)
         # make sure the correct fields are set in the flags
         # make sure the sequence and acknowlegement numbers are correct
         # create a new sock352 header using the struct.pack
@@ -143,51 +144,51 @@ class socket:
         # send the UDP packet to the destination and transmit port
         # set the timeout
         # wait or check for the ACK or a timeout
-        header = self.__make_header(0x03,0,0,len(buffer))
-        bytesSent = mainSocket.send(header+buffer)
-        return bytesSent - header_len
+        
+        #print("\tThe message you want to send is of size: %d" % msglen)
+        #print("\tMessage: \n%s" % buffer)
+        while(msglen > 255):
+            parcel = buffer[:255]
+            parcelHeader = self.__make_header(0x03,0,0,255)
+            oldBytes = bytesSent
+            bytesSent += mainSocket.send(parcelHeader+parcel) - header_len
+            #print("\t%d bytes sent in the loop!" % (bytesSent - oldBytes) )
+            msglen -= 255
+            buffer = buffer[255:]
+        header = self.__make_header(0x03,0,0,msglen)
+        bytesSent += mainSocket.send(header+buffer) - header_len
+        print("\tOne packet of %d total bytes was sent!" % bytesSent)
+        return bytesSent
 
     def recv(self,bytes_to_receive):
         global mainSocket, deliveredData
-        print("\tStarted the recv call!\n\n")
+        print("\tStarted the recv() call!")
         deliveredData = ""
         # call __sock352_get_packet() to get packets (polling)
         # check the list of received fragements
         # copy up to bytes_to_receive into a buffer
         # return the buffer if there is some data
-        flag = -1
-        while(flag != 0x03):
-            flag = self.__sock352_get_packet()
-        return deliveredData
+        fullMessage = ""
+        while(bytes_to_receive > 0):
+            flag = -1
+            while(flag != 0x03):
+                flag = self.__sock352_get_packet()
+            fullMessage += deliveredData
+            bytes_to_receive -= len(deliveredData)
+        print("\tFinished receiving the requested amount!\n")
+        return fullMessage
     
     # this is an internal function that demultiplexes all incomming packets
     # it update lists and data structures used by other methods
     
     def  __sock352_get_packet(self):
         global mainSocket, sock352PktHdrData, otherHostAddress, deliveredData, simulatedDrop
-        """
-        check the version number
-        check the header length
-        get the flag settings
-        get seq/ack numbers
-        if(connection setup)
-            create new fragment list
-            send syn packet back with correct sequence number
-            wakeup any headers waiting for a connection via accept
-        else if(connected server down)
-            send fin packet
-            remove fragment list
-        else if(data packet)
-            check sequence number, add to fragment list
-            send ack on that sequence number
-        else
-            packet is corrupted. send a RST packet
-        """
+        
         (data, senderAddress) = mainSocket.recvfrom(4096)
         (data_header, data_msg) = (data[:12],data[12:])
         header = struct.unpack(sock352PktHdrData, data_header)
-        print("\t\tWe received this flag: %d" % header[1])
-        print("\t\tThis was the message: ( %s )" % data_msg)
+        #print("\t\tWe received this flag: %d" % header[1])
+        #print("\t\tThis was the message: ( %s )" % data_msg)
         flag = header[1]
         # pretend this packet got dropped or corrupted
         if(simulatedDrop > 0):
@@ -233,7 +234,7 @@ class socket:
         global sock352PktHdrData, header_len, version, opt_ptr, protocol
         #TODO: figure out line breaks!
         global checksum, source_port, dest_port, window
-        
+
         flags = givenFlag
         sequence_no = givenSeqNo
         ack_no = givenAckNo
