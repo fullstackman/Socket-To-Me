@@ -25,12 +25,6 @@ header_len = 12
 deliveredData = ""
 
 """
-by = bytes(st, "utf-8")
-by += b"0" * (100 - len(by))
-print(by)
-"""
-
-"""
 Flag Name       (Hex) Value     (Binary) Value  (Binary) Meaning
 SOCK352_SYN     0x01            00000001        Connection initiation
 SOCK352_FIN     0x02            00000010        Connection end
@@ -127,6 +121,8 @@ class socket:
     def close(self):   # fill in your code here
         # send a FIN packet (flags with FIN bit set)
         # remove the connection from the list of connections
+        print("\tClosing the connection")
+        mainSocket.close()
         return
 
     def listen(self,buffer): #null code for part 1 
@@ -180,7 +176,6 @@ class socket:
     
     # this is an internal function that demultiplexes all incomming packets
     # it update lists and data structures used by other methods
-    
     def  __sock352_get_packet(self):
         global mainSocket, sock352PktHdrData, otherHostAddress, deliveredData, simulatedDrop
         
