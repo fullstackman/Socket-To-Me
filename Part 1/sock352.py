@@ -107,11 +107,30 @@ class socket:
         clientsocket = socket()
         return (clientsocket,otherHostAddress)
   
-    def close(self):   # fill in your code here
+    def close(self):
         # send a FIN packet (flags with FIN bit set)
-        # remove the connection from the list of connections
         print("\tClosing the connection")
+        # Make a new header with a random seq_no
+        terminal_no = random.randint(7,19)
+        header = self.__make_header(0x02, terminal_no, 0, 0)
+        ackFlag = -1
+        #   set the timeout
+        #      wait for acknowledgement
+        #        if there was a timeout, retransmit the FIN packet
+        while(ackFlag != terminal_no):
+            try:
+                mainSocket.sendto(header, otherHostAddress)
+            except TypeError:
+                mainSocket.send(header)
+            newHeader = self.__sock352_get_packet()
+            ackFlag = newHeader[9]
+        # We are safe to close this UDP connection with the other host
         mainSocket.close()
+
+        # Note:
+        # If the final ACK packet for the tear down gets dropped,
+        # one host will close the connection and the other host
+        # will forcibly lose its connection.
         return
 
     def listen(self,buffer): #null code for part 1 
@@ -152,10 +171,6 @@ class socket:
             bytesSent += tempBytesSent
             currentSeqNo += 1
         print("\tOne segment of %d total bytes was sent!" % bytesSent)
-        # Note:
-        # If the final ACK packet for the session gets dropped,
-        # the server will close the connection and the client
-        # will forcibly lose its connection.
         return bytesSent
 
     def recv(self,bytes_to_receive):
@@ -227,6 +242,8 @@ class socket:
         #   if it is a connection tear down (FIN) 
         #   send a FIN packet
         elif(flag == 0x02):
+            terminalHeader = self.__make_header(0x04,0,header[8],0)
+            mainSocket.sendto(terminalHeader, senderAddress)
             return header
         #      else if it is a data packet
         #      save the message in a global variable so the calling
