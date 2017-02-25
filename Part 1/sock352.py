@@ -4,14 +4,14 @@ import binascii
 import socket as syssock
 import struct
 import sys
-import errno
+import random
 
-transmitter = ""
-receiver = ""
+transmitter = -1
+receiver = -1
 mainSocket = (0,0)
 otherHostAddress = ""
-simulatedDrop = 0;
-sock352PktHdrData = "!12B" #'!B_BB_BBB__B_'0
+currentSeqNo = 0
+sock352PktHdrData = "!8BLLBB"
 #each one of these are represented as a B
 version = 0x1
 opt_ptr = 0x0
@@ -20,8 +20,7 @@ checksum = 0x0
 source_port = 0x0
 dest_port = 0x0
 window = 0x0
-#header_len = struct.calcsize(sock352PktHdrData)
-header_len = 12
+header_len = 18
 deliveredData = ""
 
 """
@@ -47,15 +46,15 @@ def init(UDPportTx,UDPportRx):
         transmitter = receiver
     else:
         transmitter = int(UDPportTx)
-    mainSocket.bind( ('', receiver) )  #'localhost', receiver port #
-    #mainSocket.settimeout(2)
+    mainSocket.bind( ('', receiver) )
+    # Our protocol defines a timeout of 0.2 seconds
+    mainSocket.settimeout(0.2)
     print('Initialization complete!')
     return 
     
 class socket:
     
-    def __init__(self):  # fill in your code here
-        # create any lists/arrays/hashes you need
+    def __init__(self):
         print("\tReturning your new 352-socket!")
         return
     
@@ -64,58 +63,48 @@ class socket:
         return
 
     def connect(self,address):
-        global mainSocket
+        global mainSocket, currentSeqNo
         print("\tInitiating a conection on %s" % (transmitter) )
         
         #  create a new sequence number
+        currentSeqNo = int( random.randint(20, 100) )
         #  create a new packet header with the SYN bit set in the flags
         #  (use the Struct.pack method)
         #  also set the other fields (e.g sequence #)
-        #   add the packet to the outbound queue
-
-        #header = self.__make_header(0x07, 1, 1, 33)
-        #print("\t%d fake bytes sent!" % (mainSocket.sendto(header
-        #    +"Release the kraken!", (address[0], int(transmitter)) ) ) )
-        header = self.__make_header(0x01, 1, 1, 0)
-        flag = -1
-
+        header = self.__make_header(0x01, currentSeqNo, 0, 0)
+        ackFlag = -1
         #   set the timeout
         #      wait for the return SYN
         #        if there was a timeout, retransmit the SYN packet
-        while(flag != 0x01):
-            print("\t%d bytes sent!" % (mainSocket.sendto(header,
+        while(ackFlag != currentSeqNo ):
+            print("\tRequesting a new connection...%d bytes sent!" % (mainSocket.sendto(header,
                 (address[0], transmitter) ) ) )
-            flag = self.__sock352_get_packet()
-        # We are safe to establich this UDP connection to the other host
+            newHeader = self.__sock352_get_packet()
+            ackFlag = newHeader[9]
+        # We are safe to establish this UDP connection to the other host
         mainSocket.connect( (address[0], transmitter) )
-        header = self.__make_header(0x04, 1, 1, 0)
-        print("\t%d confirmation bytes sent!\n" % (mainSocket.send(header) ) )
-        #   set the outbound and inbound sequence numbers
-
-        return header
+        #   set the sequence number of the upcoming data to send
+        currentSeqNo += 1
+        return
 
     def accept(self):
-        global mainSocket, simulatedDrop, receiver
-
-        # Set this variable to simulate the server not receiving a packet
-        #simulatedDrop += 1
+        global mainSocket, receiver, currentSeqNo
+        
         print('\tWe are waiting for a connection on %s\n' % (receiver) )
         flag = -1
+        newHeader = ""
         # call  __sock352_get_packet() until we get a new connection
         while(flag != 0x01):
-            flag = self.__sock352_get_packet()
-            print("\tFlag returned was: %d" % flag)
-        # check the the connection list - did we see a new SYN packet?
-        # This will implement the handshake protocol
-        header = self.__make_header(0x01,0,0,13)
+            newHeader = self.__sock352_get_packet()
+            flag = newHeader[1]
+        currentSeqNo = newHeader[8]
+        #Acknowledge this new connection
+        header = self.__make_header(0x04,0,currentSeqNo,13)
         mainSocket.sendto(header+"I accept you.", otherHostAddress)
-        #TODO: send reset on timeout
-        while(flag != 0x04):
-            flag = self.__sock352_get_packet()
+        # Get ready to expect new data packets
+        currentSeqNo += 1
         print("\tAcquired a connection! Calling new init...")
-        clientsocket = socket() #init('',receiver)
-        #syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
-        #clientsocket.bind( ('', receiver) )
+        clientsocket = socket()
         return (clientsocket,otherHostAddress)
   
     def close(self):   # fill in your code here
@@ -130,7 +119,8 @@ class socket:
         return
 
     def send(self,buffer):
-        global mainSocket, header_len
+        global mainSocket, header_len, currentSeqNo
+        
         bytesSent = 0
         msglen = len(buffer)
         # make sure the correct fields are set in the flags
@@ -140,24 +130,37 @@ class socket:
         # send the UDP packet to the destination and transmit port
         # set the timeout
         # wait or check for the ACK or a timeout
-        
-        #print("\tThe message you want to send is of size: %d" % msglen)
-        #print("\tMessage: \n%s" % buffer)
-        while(msglen > 255):
+        print("\tStarting send!")
+        while(msglen > 0):
+            # Take the top 255 bytes of the message because that is the
+            # maximum payload we can represent with a "B" in struct format
             parcel = buffer[:255]
-            parcelHeader = self.__make_header(0x03,0,0,255)
-            oldBytes = bytesSent
-            bytesSent += mainSocket.send(parcelHeader+parcel) - header_len
-            #print("\t%d bytes sent in the loop!" % (bytesSent - oldBytes) )
+            parcelHeader = self.__make_header(0x03,currentSeqNo,0,len(parcel) )
+            tempBytesSent = 0
+            ackFlag = -1
+            # Keep resending this packet until the proper ACK is received
+            while(ackFlag != currentSeqNo):
+                tempBytesSent = mainSocket.send(parcelHeader+parcel) - header_len
+                #print("\tSent sequnce number: %d" % currentSeqNo)
+                newHeader = self.__sock352_get_packet()
+                ackFlag = newHeader[9]
+                #print("\t\tReceived this ack: %d" % ackFlag)
+            # update the local variables to show that this last packet
+            # was successfully sent
             msglen -= 255
             buffer = buffer[255:]
-        header = self.__make_header(0x03,0,0,msglen)
-        bytesSent += mainSocket.send(header+buffer) - header_len
-        print("\tOne packet of %d total bytes was sent!" % bytesSent)
+            bytesSent += tempBytesSent
+            currentSeqNo += 1
+        print("\tOne segment of %d total bytes was sent!" % bytesSent)
+        # Note:
+        # If the final ACK packet for the session gets dropped,
+        # the server will close the connection and the client
+        # will forcibly lose its connection.
         return bytesSent
 
     def recv(self,bytes_to_receive):
-        global mainSocket, deliveredData
+        global mainSocket, deliveredData, currentSeqNo
+        
         print("\tStarted the recv() call!")
         deliveredData = ""
         # call __sock352_get_packet() to get packets (polling)
@@ -166,55 +169,78 @@ class socket:
         # return the buffer if there is some data
         fullMessage = ""
         while(bytes_to_receive > 0):
-            flag = -1
-            while(flag != 0x03):
-                flag = self.__sock352_get_packet()
+            seq_no = -1
+            # Keep checking incoming packets until we receive one with
+            # the sequence number we were expecting
+            while(seq_no != currentSeqNo):
+                newHeader = self.__sock352_get_packet()
+                seq_no = newHeader[8]
+                print("\tReceived sequence number %d" % seq_no)
+                if(seq_no != currentSeqNo):
+                    print("\tWe expected the sequence number %d, but didn't get it!" % currentSeqNo)
+                # Acknowledge whatever it is we received
+                header = self.__make_header(0x04, 0,seq_no,0)
+                mainSocket.sendto(header, otherHostAddress)
+            # The previous packet was the one we expected, so add its data to our buffer
             fullMessage += deliveredData
             bytes_to_receive -= len(deliveredData)
-        print("\tFinished receiving the requested amount!\n")
+            # Get ready to expect the next packet
+            currentSeqNo += 1
+        print("\tFinished receiving the requested amount!")
         return fullMessage
     
-    # this is an internal function that demultiplexes all incomming packets
-    # it update lists and data structures used by other methods
     def  __sock352_get_packet(self):
-        global mainSocket, sock352PktHdrData, otherHostAddress, deliveredData, simulatedDrop
+        global mainSocket, sock352PktHdrData, otherHostAddress, deliveredData
         
-        (data, senderAddress) = mainSocket.recvfrom(4096)
-        (data_header, data_msg) = (data[:12],data[12:])
+        # Wait 0.2 seconds to receive a packet, otherwise return an empty header
+        try:
+            (data, senderAddress) = mainSocket.recvfrom(4096)
+        except syssock.timeout:
+            print("\t\tNo packets received before the timeout!")
+            z = [0,0,0,0,0,0,0,0,0,0,0,0]
+            return z
+        
+        # Randomly pretend this packet got dropped or corrupted
+        """
+        if(random.randint(1,3) == 2):
+            print("\t\tIncoming packet got dropped! Timeout.")
+            #z = self.__make_header(1,1,1,1)
+            #print("\t\tAssembled this header: ")
+            #print(z)
+            z = [0,0,0,0,0,0,0,0,0,0,0,0]
+            return z
+        """
+        # Separate the header and the message
+        (data_header, data_msg) = (data[:18],data[18:])
         header = struct.unpack(sock352PktHdrData, data_header)
-        #print("\t\tWe received this flag: %d" % header[1])
-        #print("\t\tThis was the message: ( %s )" % data_msg)
         flag = header[1]
-        # pretend this packet got dropped or corrupted
-        if(simulatedDrop > 0):
-            flag = 831
-            simulatedDrop -= 1
-        #Python lacks a switch statement!
+
+        # Python lacks a switch statement!
+        # Elif isn't so ugly...but still!
+
         #   First check if it's a connection set up (SYN bit set in flags)
-        #    Create a new fragment list
-        #    Send a SYN packet back with the correct sequence number
-        #    Wake up any readers wating for a connection via accept()
-        #    or return
+        #    If so, save the address of the sender so the calling function
+        #    can make use of it
         if(flag == 0x01):
             otherHostAddress = senderAddress
-            return flag
+            return header
         #   if it is a connection tear down (FIN) 
-        #   send a FIN packet, remove fragment list
+        #   send a FIN packet
         elif(flag == 0x02):
-            return flag
+            return header
         #      else if it is a data packet
-        #      check the sequence numbers, add to the list of received fragments
-        #      send an ACK packet back with the correct sequence number
+        #      save the message in a global variable so the calling
+        #       function can make use of it
         elif(flag == 0x03):
             deliveredData = data_msg
-            return flag
-        #   else if it is an ACK packet...
+            return header
+        #   else if it is an ACK packet, let the calling function know
         elif(flag == 0x04):
-            return flag
+            return header
         #   If we get a reset packet, ignore it. The calling function should
         #   handle the resend
         elif(flag == 0x08):
-            return flag
+            return header
         #   else if it's nothing it's a malformed packet.
         #   send a reset (RST) packet with the sequence number
         else:
@@ -223,19 +249,23 @@ class socket:
                 print("\t\tSent a reset packet!")
             else:
                 print("\t\tFailed to send a reset packet!")
-            return flag
+            return header
     
     def  __make_header(self, givenFlag, givenSeqNo, givenAckNo, givenPayload):
         global sock352PktHdrData, header_len, version, opt_ptr, protocol
         #TODO: figure out line breaks!
         global checksum, source_port, dest_port, window
 
+        # For Part 1, these are the only flags that vary based on the type
+        # of packet being sent, so we ask for them in the parameters
+        # the rest aren't used and have been initialized globally
         flags = givenFlag
         sequence_no = givenSeqNo
         ack_no = givenAckNo
         payload_len = givenPayload
-        
+        # create a struct using the format that was saved globally
         udpPkt_hdr_data = struct.Struct(sock352PktHdrData)
+        # pack this data into a struct and return it
         return udpPkt_hdr_data.pack(version, flags, opt_ptr, protocol,
             header_len, checksum, source_port, dest_port, sequence_no,
             ack_no, window, payload_len)
