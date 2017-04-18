@@ -1,0 +1,12 @@
+# This is my test keychain file:
+# These keys were generated using Python NACL library
+private		*		*	03f3d221d765eea883eb95167c04ea85c6dea0590fa9539849e580ef966f12c8
+public		*		*	51746d9f895ea0189d7bab97d55f65f9b908d8928486643361243bd3f6b04a5c
+# Hoping these work:
+private	localhost 8888	bc88fdc7e6afa3a59e09ef974369c73a854572569bd7f6b0b3064846d8e8e928
+public	localhost 8888	fca6a033479f12beef6ad1a7cbee442bdefa5b1d9a5f47e3d3abd0853426e52c
+private	localhost 9999	fd35b9497844395b056788c1f8448ae3f5cc45dfaeec18ed938b7cefd609a0cc
+public 	localhost 9999	3198ce82c9e72a94bbd16443872598a80db2f8739548b43ab657e175d79dfb5b
+#
+# python .\client2.py -d localhost -f nonsense.txt -u 9999 -v 8888
+# python .\server2.py -f zenith.txt -u 8888 -v 9999

@@ -82,3 +82,30 @@ alice_box = Box(skalice, pkbob)
 plaintext = alice_box.decrypt(encrypted)
 
 print ("the plaintext is: %s" %(plaintext))
+
+#Time for Alice to strike back
+nonce = nacl.utils.random(Box.NONCE_SIZE)
+newMessage = "Return of the Alice!"
+newEncrypted = alice_box.encrypt(newMessage, nonce)
+
+print ("The length of the plaintext is %d and the cyphertext is %d" % (len(newMessage),len(newEncrypted)))
+
+# Decrypt our message, an exception will be raised if the encryption was
+#   tampered with or there was otherwise an error.
+received = bob_box.decrypt(newEncrypted)
+
+print ("Bob received: %s" %(received))
+
+#Can bob send himself a message?
+burger_box = Box(skbob,pkbob)
+nonce = nacl.utils.random(Box.NONCE_SIZE)
+finalMessage = "The Last Bob!"
+finalEncrypted = burger_box.encrypt(finalMessage, nonce)
+
+print ("The length of the plaintext is %d and the cyphertext is %d" % (len(finalMessage),len(finalEncrypted)))
+
+# Decrypt our message, an exception will be raised if the encryption was
+#   tampered with or there was otherwise an error.
+finalReceived = burger_box.decrypt(finalEncrypted)
+
+print ("Bob received this from himself: %s" %(finalReceived))
