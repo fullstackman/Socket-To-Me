@@ -161,22 +161,7 @@ class socket:
         # example code to parse an argument list 
         if (len(args) >= 1): 
             address = args[0]
-        if (len(args) >= 2):
-            if (args[1] == ENCRYPT):
-                self.encrypt = True
-                for private_address in privateKeys:
-                    if(private_address == ('localhost',receiver)):
-                        my_secret_key = privateKeys[private_address]
-                        break
-                if(my_secret_key == -1):
-                    my_secret_key = default_secret_key
-                if(my_secret_key == -1):
-                    print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
-                    return
-            else:
-                print ("\tInvalid encryption flag! Self-destructing now . . .")
-                return
-                
+        #
         print("\tInitiating a conection on %s" % (transmitter) )
         
         #  create a new sequence number
@@ -196,19 +181,37 @@ class socket:
             ackFlag = newHeader[9]
         # We are safe to establish this UDP connection to the other host
         mainSocket.connect( (address[0], transmitter) )
-        # Establish the encryption keys and box
-        for public_address in publicKeys:
-            if(public_address == (address[0], transmitter) ):
-                other_host_public_key = publicKeys[public_address]
-                break
-        if(other_host_public_key == -1):
-            other_host_public_key = default_public_key
-        if(other_host_public_key == -1):
-            print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
-            return
-        communication_box = Box(my_secret_key,other_host_public_key)
         #   set the sequence number of the upcoming data to send
         currentSeqNo += 1
+
+        # Set up everything we need for encryption, if needed
+        self.encrypt = False
+        if (len(args) >= 2):
+            if (args[1] == ENCRYPT):
+                self.encrypt = True
+                for private_address in privateKeys:
+                    if(private_address == ('localhost',receiver)):
+                        my_secret_key = privateKeys[private_address]
+                        break
+                if(my_secret_key == -1):
+                    my_secret_key = default_secret_key
+                if(my_secret_key == -1):
+                    print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
+                    return
+                
+                for public_address in publicKeys:
+                    if(public_address == (address[0], transmitter) ):
+                        other_host_public_key = publicKeys[public_address]
+                        break
+                if(other_host_public_key == -1):
+                    other_host_public_key = default_public_key
+                if(other_host_public_key == -1):
+                    print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
+                    return
+                else:
+                    print ("\tInvalid encryption flag! Self-destructing now . . .")
+                    return
+                communication_box = Box(my_secret_key,other_host_public_key)
         return
 
     def listen(self,backlog):
@@ -219,7 +222,20 @@ class socket:
         global ENCRYPT, mainSocket, receiver, currentSeqNo, communication_box, receiver
         global publicKeys, default_public_key, other_host_public_key, my_secret_key, default_secret_key
 
-        # example code to parse an argument list 
+        print('\tWe are waiting for a connection on %s\n' % (receiver) )
+        flag = -1
+        newHeader = ""
+        # call  __sock352_get_packet() until we get a new connection
+        while(flag != 0x01):
+            newHeader = self.__sock352_get_packet()
+            flag = newHeader[1]
+        currentSeqNo = newHeader[8]
+        #Acknowledge this new connection
+        header = self.__make_header(0x0,0x04,0,currentSeqNo,13)
+        mainSocket.sendto(header+"I accept you.", otherHostAddress)
+        
+        # Establish the encryption keys and box, if asked for
+        self.encryption = False
         if (len(args) >= 1):
             if (args[0] == ENCRYPT):
                 self.encryption = True
@@ -235,29 +251,16 @@ class socket:
             else:
                 print ("\tInvalid encryption flag! Self-destructing now . . .")
                 return
-        
-        print('\tWe are waiting for a connection on %s\n' % (receiver) )
-        flag = -1
-        newHeader = ""
-        # call  __sock352_get_packet() until we get a new connection
-        while(flag != 0x01):
-            newHeader = self.__sock352_get_packet()
-            flag = newHeader[1]
-        currentSeqNo = newHeader[8]
-        #Acknowledge this new connection
-        header = self.__make_header(0x0,0x04,0,currentSeqNo,13)
-        mainSocket.sendto(header+"I accept you.", otherHostAddress)
-        # Establish the encryption keys and box
-        for public_address in publicKeys:
-            if(public_address == otherHostAddress ):
-                other_host_public_key = publicKeys[public_address]
-                break
-        if(other_host_public_key == -1):
-            other_host_public_key = default_public_key
-        if(other_host_public_key == -1):
-            print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
-            return (0,0)
-        communication_box = Box(my_secret_key,other_host_public_key)
+            for public_address in publicKeys:
+                if(public_address == otherHostAddress ):
+                    other_host_public_key = publicKeys[public_address]
+                    break
+            if(other_host_public_key == -1):
+                other_host_public_key = default_public_key
+            if(other_host_public_key == -1):
+                print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
+                return (0,0)
+            communication_box = Box(my_secret_key,other_host_public_key)
         #
         # Get ready to expect new data packets
         currentSeqNo += 1
