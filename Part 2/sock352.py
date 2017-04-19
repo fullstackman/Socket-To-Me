@@ -91,7 +91,7 @@ default_public_key = -1
 # defines the UDP ports all messages are sent
 # and received from.
 def init(UDPportTx,UDPportRx):
-    global mainSocket, transmitter, receiver, default_secret_key, my_secret_key
+    global mainSocket, transmitter, receiver
 
     # create a UDP/datagram socket 
     # bind the port to the Rx (receive) port number
@@ -104,13 +104,8 @@ def init(UDPportTx,UDPportRx):
     mainSocket.bind( ('', receiver) )
     # Our protocol defines a timeout of 0.2 seconds
     mainSocket.settimeout(0.2)
-    for private_address in privateKeys:
-        if(private_address == ('localhost',UDPportTx)):
-            my_secret_key = privateKeys[private_address]
-    if(my_secret_key == -1):
-        my_secret_key = default_secret_key
     print('Initialization complete!')
-    return 
+    return
 
     
 # read the keyfile. The result should be a private key and a keychain of
@@ -167,8 +162,8 @@ class socket:
 
     def connect(self,*args):
 
-        global sock352portTx, ENCRYPT, mainSocket, currentSeqNo, communication_box
-        global publicKeys, default_public_key, other_host_public_key
+        global sock352portTx, ENCRYPT, mainSocket, currentSeqNo, communication_box, receiver
+        global publicKeys, default_public_key, other_host_public_key, my_secret_key, default_secret_key
 
         # Store the (host,port) tuple in a single variable
         address = []
@@ -178,6 +173,16 @@ class socket:
         if (len(args) >= 2):
             if (args[1] == ENCRYPT):
                 self.encrypt = True
+                for private_address in privateKeys:
+                    print("\tComparing ",private_address,"\tto  localhost,",receiver)
+                    if(private_address == ('localhost',receiver)):
+                        my_secret_key = privateKeys[private_address]
+                        break
+                if(my_secret_key == -1):
+                    my_secret_key = default_secret_key
+                if(my_secret_key == -1):
+                    print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
+                    return
             else:
                 print ("\tInvalid encryption flag! Self-destructing now . . .")
                 return
@@ -207,8 +212,11 @@ class socket:
                 other_host_public_key = publicKeys[public_address]
         if(other_host_public_key == -1):
             other_host_public_key = default_public_key
+        if(other_host_public_key == -1):
+            print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
+            return
+        print("\tI think my secret key is %s and their public key is %s" % (my_secret_key, other_host_public_key))
         communication_box = Box(my_secret_key,other_host_public_key)
-        print("\tI think my secret key is %s and their public key is %s" % (my_secret_key.encode(encoder = nacl.encoding.HexEncoder), other_host_public_key.encode(encoder = nacl.encoding.HexEncoder)))
         #   set the sequence number of the upcoming data to send
         currentSeqNo += 1
         return
@@ -218,13 +226,23 @@ class socket:
         pass
     
     def accept(self,*args):
-        global ENCRYPT, mainSocket, receiver, currentSeqNo, communication_box
-        global publicKeys, default_public_key, other_host_public_key
+        global ENCRYPT, mainSocket, receiver, currentSeqNo, communication_box, receiver
+        global publicKeys, default_public_key, other_host_public_key, my_secret_key, default_secret_key
 
         # example code to parse an argument list 
         if (len(args) >= 1):
             if (args[0] == ENCRYPT):
                 self.encryption = True
+                for private_address in privateKeys:
+                    print("\tComparing ",private_address,"\tto  localhost,",receiver)
+                    if(private_address == ('localhost',receiver)):
+                        my_secret_key = privateKeys[private_address]
+                        break
+                if(my_secret_key == -1):
+                    my_secret_key = default_secret_key
+                if(my_secret_key == -1):
+                    print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
+                    return
             else:
                 print ("\tInvalid encryption flag! Self-destructing now . . .")
                 return
@@ -246,8 +264,11 @@ class socket:
                 other_host_public_key = publicKeys[public_address]
         if(other_host_public_key == -1):
             other_host_public_key = default_public_key
+        if(other_host_public_key == -1):
+            print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
+            return
+        print("\tI think my secret key is %s and their public key is %s" % (my_secret_key, other_host_public_key))
         communication_box = Box(my_secret_key,other_host_public_key)
-        print("\tI think my secret key is %s and their public key is %s" % (my_secret_key.encode(encoder = nacl.encoding.HexEncoder), other_host_public_key.encode(encoder = nacl.encoding.HexEncoder)))
         #
         # Get ready to expect new data packets
         currentSeqNo += 1
@@ -314,6 +335,7 @@ class socket:
             parcelHeader = self.__make_header(optionBit,0x03,currentSeqNo,0,parcel_len )
             tempBytesSent = 0
             ackFlag = -1
+            print("About to send --- %s ---" % parcel)
             # Keep resending this packet until the proper ACK is received
             while(ackFlag != currentSeqNo):
                 tempBytesSent = mainSocket.send(parcelHeader+parcel) - header_len - encryption_filler
@@ -353,6 +375,7 @@ class socket:
                 # Acknowledge whatever it is we received
                 header = self.__make_header(0x0,0x04, 0,seq_no,0)
                 mainSocket.sendto(header, otherHostAddress)
+            print("Just received --- %s ---" % deliveredData)
             if(newHeader[2] == 0x1):
                 deliveredData = communication_box.decrypt(deliveredData)
             # The previous packet was the one we expected, so add its data to our buffer
