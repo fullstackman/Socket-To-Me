@@ -1,4 +1,3 @@
-
 # CS 352 project part 2 
 # this is the initial socket library for project 2 
 # You wil need to fill in the various methods in this
@@ -140,14 +139,6 @@ def readKeyChain(filename):
             print ( "error: opening keychain file: %s %s" % (filename,repr(e)))
     else:
         print ("error: No filename presented")             
-    """
-    print ("These are the PUBLIC keys obtained:")
-    for public_address in publicKeys:
-        print ("%s\t\t:\t%s"% (public_address,publicKeysHex[public_address]) )
-    print ("These are the PRIVATE keys obtained:")
-    for private_address in privateKeys:
-        print ("%s\t\t:\t%s"% (private_address,privateKeysHex[private_address]) )
-    """
     return (publicKeys,privateKeys)
 
 class socket:
@@ -174,7 +165,6 @@ class socket:
             if (args[1] == ENCRYPT):
                 self.encrypt = True
                 for private_address in privateKeys:
-                    print("\tComparing ",private_address,"\tto  localhost,",receiver)
                     if(private_address == ('localhost',receiver)):
                         my_secret_key = privateKeys[private_address]
                         break
@@ -210,12 +200,12 @@ class socket:
         for public_address in publicKeys:
             if(public_address == (address[0], transmitter) ):
                 other_host_public_key = publicKeys[public_address]
+                break
         if(other_host_public_key == -1):
             other_host_public_key = default_public_key
         if(other_host_public_key == -1):
             print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
             return
-        print("\tI think my secret key is %s and their public key is %s" % (my_secret_key, other_host_public_key))
         communication_box = Box(my_secret_key,other_host_public_key)
         #   set the sequence number of the upcoming data to send
         currentSeqNo += 1
@@ -234,7 +224,6 @@ class socket:
             if (args[0] == ENCRYPT):
                 self.encryption = True
                 for private_address in privateKeys:
-                    print("\tComparing ",private_address,"\tto  localhost,",receiver)
                     if(private_address == ('localhost',receiver)):
                         my_secret_key = privateKeys[private_address]
                         break
@@ -242,7 +231,7 @@ class socket:
                     my_secret_key = default_secret_key
                 if(my_secret_key == -1):
                     print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
-                    return
+                    return (0,0)
             else:
                 print ("\tInvalid encryption flag! Self-destructing now . . .")
                 return
@@ -262,12 +251,12 @@ class socket:
         for public_address in publicKeys:
             if(public_address == otherHostAddress ):
                 other_host_public_key = publicKeys[public_address]
+                break
         if(other_host_public_key == -1):
             other_host_public_key = default_public_key
         if(other_host_public_key == -1):
             print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
-            return
-        print("\tI think my secret key is %s and their public key is %s" % (my_secret_key, other_host_public_key))
+            return (0,0)
         communication_box = Box(my_secret_key,other_host_public_key)
         #
         # Get ready to expect new data packets
@@ -314,7 +303,6 @@ class socket:
         # send the UDP packet to the destination and transmit port
         # set the timeout
         # wait or check for the ACK or a timeout
-        print("\tStarting send!")
         while(msglen > 0):
             # Take the top 255 bytes of the message because that is the
             # maximum payload we can represent with a "B" in struct format
@@ -335,7 +323,6 @@ class socket:
             parcelHeader = self.__make_header(optionBit,0x03,currentSeqNo,0,parcel_len )
             tempBytesSent = 0
             ackFlag = -1
-            print("About to send --- %s ---" % parcel)
             # Keep resending this packet until the proper ACK is received
             while(ackFlag != currentSeqNo):
                 tempBytesSent = mainSocket.send(parcelHeader+parcel) - header_len - encryption_filler
@@ -355,13 +342,13 @@ class socket:
     def recv(self,nbytes):
         global mainSocket, deliveredData, currentSeqNo
         
-        print("\tStarted the recv() call!")
         deliveredData = ""
         # call __sock352_get_packet() to get packets (polling)
         # check the list of received fragements
         # copy up to nbytes into a buffer
         # return the buffer if there is some data
         fullMessage = ""
+        print("\tReceiving %d bytes" % (nbytes))
         while(nbytes > 0):
             seq_no = -1
             # Keep checking incoming packets until we receive one with
@@ -369,13 +356,14 @@ class socket:
             while(seq_no != currentSeqNo):
                 newHeader = self.__sock352_get_packet()
                 seq_no = newHeader[8]
+                """
                 print("\tReceived sequence number %d" % seq_no)
                 if(seq_no != currentSeqNo):
                     print("\tWe expected the sequence number %d, but didn't get it!" % currentSeqNo)
+                """
                 # Acknowledge whatever it is we received
                 header = self.__make_header(0x0,0x04, 0,seq_no,0)
                 mainSocket.sendto(header, otherHostAddress)
-            print("Just received --- %s ---" % deliveredData)
             if(newHeader[2] == 0x1):
                 deliveredData = communication_box.decrypt(deliveredData)
             # The previous packet was the one we expected, so add its data to our buffer
@@ -383,7 +371,7 @@ class socket:
             nbytes -= len(deliveredData)
             # Get ready to expect the next packet
             currentSeqNo += 1
-        print("\tFinished receiving the requested amount!")
+        print("\t\tSuccess!")
         return fullMessage
 
     def  __sock352_get_packet(self):
