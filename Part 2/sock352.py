@@ -26,15 +26,14 @@ receiver = -1
 mainSocket = (0,0)
 otherHostAddress = ""
 currentSeqNo = 0
-sock352PktHdrData = "!8BLLBB"
-#each one of these are represented as a B
-version = 0x1
+sock352PktHdrData = "!BBBBHHLLQQLL"
+version = 0x2
 protocol = 0x0
 checksum = 0x0
 source_port = 0x0
 dest_port = 0x0
 window = 0x0
-header_len = 18
+header_len = 40
 deliveredData = ""
 
 """
@@ -82,9 +81,6 @@ my_secret_key = -1
 other_host_public_key = -1
 default_secret_key = -1
 default_public_key = -1
-
-# this is the structure of the sock352 packet 
-#sock352HdrStructStr = '!BBBBHHLLQQLL'
 
 # this init function is global to the class and
 # defines the UDP ports all messages are sent
@@ -208,10 +204,10 @@ class socket:
                 if(other_host_public_key == -1):
                     print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
                     return
-                else:
-                    print ("\tInvalid encryption flag! Self-destructing now . . .")
-                    return
                 communication_box = Box(my_secret_key,other_host_public_key)
+            else:
+                print ("\tInvalid encryption flag! Self-destructing now . . .")
+                return
         return
 
     def listen(self,backlog):
@@ -248,19 +244,19 @@ class socket:
                 if(my_secret_key == -1):
                     print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
                     return (0,0)
+                for public_address in publicKeys:
+                    if(public_address == otherHostAddress ):
+                        other_host_public_key = publicKeys[public_address]
+                        break
+                if(other_host_public_key == -1):
+                    other_host_public_key = default_public_key
+                if(other_host_public_key == -1):
+                    print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
+                    return (0,0)
+                communication_box = Box(my_secret_key,other_host_public_key)
             else:
                 print ("\tInvalid encryption flag! Self-destructing now . . .")
                 return
-            for public_address in publicKeys:
-                if(public_address == otherHostAddress ):
-                    other_host_public_key = publicKeys[public_address]
-                    break
-            if(other_host_public_key == -1):
-                other_host_public_key = default_public_key
-            if(other_host_public_key == -1):
-                print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
-                return (0,0)
-            communication_box = Box(my_secret_key,other_host_public_key)
         #
         # Get ready to expect new data packets
         currentSeqNo += 1
@@ -307,16 +303,16 @@ class socket:
         # set the timeout
         # wait or check for the ACK or a timeout
         while(msglen > 0):
-            # Take the top 255 bytes of the message because that is the
-            # maximum payload we can represent with a "B" in struct format
-            # encryption introduces an extra 40 bytes of metadata
-            parcel_len = 255
+            # Take the top 2047 bytes of the message because we don't want to get too
+            # close to the amount recv() asks for [which is currently set to 4096]
+            # Remeber: encryption introduces an extra 40 bytes of metadata
+            parcel_len = 2047
             optionBit = 0x0
             encryption_filler = 0
             parcel = ""
             if(self.encrypt):
                 encryption_filler = 40
-                parcel_len = 215
+                parcel_len = parcel_len - encryption_filler
                 parcel = buffer[:parcel_len]
                 nonce = nacl.utils.random(Box.NONCE_SIZE)
                 parcel = communication_box.encrypt(parcel, nonce)
@@ -399,7 +395,7 @@ class socket:
             return z
         """
         # Separate the header and the message
-        (data_header, data_msg) = (data[:18],data[18:])
+        (data_header, data_msg) = (data[:header_len],data[header_len:])
         header = struct.unpack(sock352PktHdrData, data_header)
         flag = header[1]
 
@@ -453,7 +449,6 @@ class socket:
         flags = givenFlag
         sequence_no = givenSeqNo
         ack_no = givenAckNo
-        # TODO: payload length might be 40 bytes longer when encrypted
         payload_len = givenPayload
         # create a struct using the format that was saved globally
         udpPkt_hdr_data = struct.Struct(sock352PktHdrData)
