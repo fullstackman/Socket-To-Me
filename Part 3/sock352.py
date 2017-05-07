@@ -319,7 +319,7 @@ class socket:
             # Take the top 2047 bytes of the message because we don't want to get too
             # close to the amount recv() asks for [which is currently set to 4096]
             # Remeber: encryption introduces an extra 40 bytes of metadata
-            parcel_len = 2047
+            parcel_len = 65500
             #"""
             #potential error: what if the initial window size is zero?
             while(window < 1):
@@ -438,7 +438,7 @@ class socket:
         
         # Wait 0.2 seconds to receive a packet, otherwise return an empty header
         try:
-            (data, senderAddress) = mainSocket.recvfrom(4096)
+            (data, senderAddress) = mainSocket.recvfrom(65536)
         except syssock.timeout:
             print("\t\tNo packets received before the timeout!")
             z = [0,0,0,0,0,0,0,0,0,0,0,0]
