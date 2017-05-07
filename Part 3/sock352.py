@@ -180,6 +180,7 @@ class socket:
             newHeader = self.__sock352_get_packet()
             ackFlag = newHeader[9]
             print("\t\tAccepted! And the intial window size is %d" % (newHeader[10]))
+            # Save the advertised window size
             window = newHeader[10]
         # We are safe to establish this UDP connection to the other host
         mainSocket.connect( (address[0], transmitter) )
@@ -233,6 +234,7 @@ class socket:
             newHeader = self.__sock352_get_packet()
             flag = newHeader[1]
         currentSeqNo = newHeader[8]
+        #Advertise an empty window of the maximum size for this assignment
         window = 32000
         #Acknowledge this new connection
         header = self.__make_header(0x0,0x04,0,currentSeqNo,13)
@@ -308,26 +310,32 @@ class socket:
         
         bytesSent = 0
         msglen = len(buffer)
-        # make sure the correct fields are set in the flags
-        # make sure the sequence and acknowlegement numbers are correct
-        # create a new sock352 header using the struct.pack
-        # create a new UDP packet with the header and buffer 
-        # send the UDP packet to the destination and transmit port
-        # set the timeout
-        # wait or check for the ACK or a timeout
+        """
+        make sure the correct fields are set in the flags
+        make sure the sequence and acknowlegement numbers are correct
+        create a new sock352 header using the struct.pack
+        create a new UDP packet with the header and buffer 
+        send the UDP packet to the destination and transmit port
+        set the timeout
+        wait or check for the ACK or a timeout
+        Because we loop on msglen, we ensure that send() does not return
+        until the requested amount was properly sent
+        """
         while(msglen > 0):
-            # Take the top 2047 bytes of the message because we don't want to get too
-            # close to the amount recv() asks for [which is currently set to 4096]
-            # Remeber: encryption introduces an extra 40 bytes of metadata
+            """
+            Take the top 65500 bytes of the message because we don't want to get too
+            close to the amount recv() asks for [which is currently set to the UDP
+            maximum of 65536 bytes]
+            If the advertised window is smaller than this, then we use that size
+            Remeber: encryption introduces an extra 40 bytes of metadata
+            """
             parcel_len = 65500
-            #"""
             #potential error: what if the initial window size is zero?
             while(window < 1):
                 newHeader = self.__sock352_get_packet()
                 window = newHeader[10]
             if(parcel_len > window):
                 parcel_len = window
-            #"""
             optionBit = 0x0
             encryption_filler = 0
             parcel = ""
@@ -354,30 +362,35 @@ class socket:
                 newWindow = newHeader[10]
             # update the local variables to show that this last packet
             # was successfully sent
-            print("\t\tJust sent %d bytes!" % tempBytesSent)
+            print("\tJust sent %d bytes!" % tempBytesSent)
             window = newWindow
             msglen -= tempBytesSent
             buffer = buffer[tempBytesSent:]
             bytesSent += tempBytesSent
             currentSeqNo += 1
-        print("\tOne segment of %d total bytes was sent!" % bytesSent)
+        print("\t\tOne segment of %d total bytes was sent!" % bytesSent)
         return bytesSent
 
     def recv(self,nbytes):
         global mainSocket, deliveredData, currentSeqNo
         global window, globalBuffer
         
+        """
+        Algorithm:
+            Check the buffer (queue) for data
+            If there is enough data:
+                grab it
+                check for any extra incoming data (polling)
+                return the requested amount to application layer
+            Else:
+                take whatever is in buffer and check the socket for new packets with more data
+            repeat 
+        """
         deliveredData = ""
-        # call __sock352_get_packet() to get packets (polling)
-        # check the list of received fragements
-        # copy up to nbytes into a buffer
-        # return the buffer if there is some data
         fullMessage = ""
         print("\tAsking for %d bytes" % (nbytes))
         while(nbytes > 0):
-            #"""
-            print("\t\tGlobal buffer is of size: %d" % (len(globalBuffer) ) )
-            #print("\t\tGlobal buffer is\n\t\t\t%s" % (globalBuffer))
+            #print("\t\tGlobal buffer is of size: %d" % (len(globalBuffer) ) )
             if(len(globalBuffer) >= nbytes):
                 fullMessage += globalBuffer[:nbytes]
                 globalBuffer = globalBuffer[nbytes:]
@@ -402,7 +415,7 @@ class socket:
             nbytes -= len(globalBuffer)
             globalBuffer = ""
             window = MAX_WINDOW_SIZE
-            #"""
+            
             seq_no = -1
             # Keep checking incoming packets until we receive one with
             # the sequence number we were expecting
@@ -426,7 +439,7 @@ class socket:
             globalBuffer += deliveredData
             # Get ready to expect the next packet
             currentSeqNo += 1
-        print("\t\tReturning to application layer...")
+        print("\t\tReturning requested amount to application layer...")
         """
         header = self.__make_header(0x0,0x04, 0,0,0) currentWindow!
         mainSocket.sendto(header, otherHostAddress)
