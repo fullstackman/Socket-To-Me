@@ -1,7 +1,4 @@
-# CS 352 project part 2 
-# this is the initial socket library for project 2 
-# You wil need to fill in the various methods in this
-# library 
+# CS 352 project part 3
 
 # main libraries 
 import binascii
@@ -23,9 +20,9 @@ import random
 
 
 #TODO:
-#global globalBuffer
-#globalBuffer = ""
-#MAX_WINDOW_SIZE = 32000
+global globalBuffer
+globalBuffer = ""
+MAX_WINDOW_SIZE = 32000
 
 transmitter = -1
 receiver = -1
@@ -182,7 +179,7 @@ class socket:
                 (address[0], transmitter) ) ) )
             newHeader = self.__sock352_get_packet()
             ackFlag = newHeader[9]
-            print("\t\tAccepted! And the window size is %d" % (newHeader[10]))
+            print("\t\tAccepted! And the intial window size is %d" % (newHeader[10]))
             window = newHeader[10]
         # We are safe to establish this UDP connection to the other host
         mainSocket.connect( (address[0], transmitter) )
@@ -282,10 +279,15 @@ class socket:
         terminal_no = random.randint(7,19)
         header = self.__make_header(0x0,0x02, terminal_no, 0, 0)
         ackFlag = -1
+        counter = 0
         #   set the timeout
         #      wait for acknowledgement
         #        if there was a timeout, retransmit the FIN packet
         while(ackFlag != terminal_no):
+            counter += 1
+            if(counter > 4):
+                print("\tThe other host terminated this connection!")
+                break
             try:
                 mainSocket.sendto(header, otherHostAddress)
             except TypeError:
@@ -302,7 +304,7 @@ class socket:
         return
 
     def send(self,buffer):
-        global mainSocket, header_len, currentSeqNo, communication_box
+        global mainSocket, header_len, currentSeqNo, communication_box, window
         
         bytesSent = 0
         msglen = len(buffer)
@@ -318,13 +320,14 @@ class socket:
             # close to the amount recv() asks for [which is currently set to 4096]
             # Remeber: encryption introduces an extra 40 bytes of metadata
             parcel_len = 2047
-            """
-            if(parcel_len > advertisedWindow):
-                parcel_len = advertisedWindow
-            while(parcel_len < 1):
+            #"""
+            #potential error: what if the initial window size is zero?
+            while(window < 1):
                 newHeader = self.__sock352_get_packet()
-                parcel_len = newHeader[?]
-            """
+                window = newHeader[10]
+            if(parcel_len > window):
+                parcel_len = window
+            #"""
             optionBit = 0x0
             encryption_filler = 0
             parcel = ""
@@ -340,7 +343,7 @@ class socket:
             parcelHeader = self.__make_header(optionBit,0x03,currentSeqNo,0,parcel_len )
             tempBytesSent = 0
             ackFlag = -1
-            #newWindow = -1
+            newWindow = -1
             # Keep resending this packet until the proper ACK is received
             while(ackFlag != currentSeqNo):
                 tempBytesSent = mainSocket.send(parcelHeader+parcel) - header_len - encryption_filler
@@ -348,11 +351,11 @@ class socket:
                 newHeader = self.__sock352_get_packet()
                 ackFlag = newHeader[9]
                 #print("\t\tReceived this ack: %d" % ackFlag)
-                #newWindow = newHeader[?]
+                newWindow = newHeader[10]
             # update the local variables to show that this last packet
             # was successfully sent
             print("\t\tJust sent %d bytes!" % tempBytesSent)
-            #advertisedWindow = newWindow
+            window = newWindow
             msglen -= tempBytesSent
             buffer = buffer[tempBytesSent:]
             bytesSent += tempBytesSent
@@ -362,6 +365,7 @@ class socket:
 
     def recv(self,nbytes):
         global mainSocket, deliveredData, currentSeqNo
+        global window, globalBuffer
         
         deliveredData = ""
         # call __sock352_get_packet() to get packets (polling)
@@ -369,20 +373,36 @@ class socket:
         # copy up to nbytes into a buffer
         # return the buffer if there is some data
         fullMessage = ""
-        print("\tReceiving %d bytes" % (nbytes))
+        print("\tAsking for %d bytes" % (nbytes))
         while(nbytes > 0):
-            """
+            #"""
+            print("\t\tGlobal buffer is of size: %d" % (len(globalBuffer) ) )
+            #print("\t\tGlobal buffer is\n\t\t\t%s" % (globalBuffer))
             if(len(globalBuffer) >= nbytes):
                 fullMessage += globalBuffer[:nbytes]
-                nbytes = 0
                 globalBuffer = globalBuffer[nbytes:]
-                currentWindow += nbytes
+                window += nbytes
+                nbytes = 0
+                # Check if there is more data coming in from the sender
+                newHeader = self.__sock352_get_packet()
+                seq_no = newHeader[8]
+                # If we were expecting this packet, do the proper updates
+                if(seq_no == currentSeqNo):
+                    if(newHeader[2] == 0x1):
+                        deliveredData = communication_box.decrypt(deliveredData)
+                    window -= len(deliveredData)
+                    globalBuffer += deliveredData
+                    print("\t\tJust received an extra %d bytes." % (len(deliveredData)))
+                    currentSeqNo += 1
+                # Acknowledge whatever it is we received
+                header = self.__make_header(0x0,0x04, 0,seq_no,0)
+                mainSocket.sendto(header, otherHostAddress)
                 continue
             fullMessage += globalBuffer
             nbytes -= len(globalBuffer)
             globalBuffer = ""
-            currentWindow = MAX_WINDOW_SIZE
-            """
+            window = MAX_WINDOW_SIZE
+            #"""
             seq_no = -1
             # Keep checking incoming packets until we receive one with
             # the sequence number we were expecting
@@ -394,20 +414,16 @@ class socket:
                 if(seq_no != currentSeqNo):
                     print("\tWe expected the sequence number %d, but didn't get it!" % currentSeqNo)
                 """
+                if(seq_no == currentSeqNo):
+                    if(newHeader[2] == 0x1):
+                        deliveredData = communication_box.decrypt(deliveredData)
+                    window -= len(deliveredData)
                 # Acknowledge whatever it is we received
-                """
-                currentWindow -= len(deliveredData)
-                put currentWindow in the header
-                """
                 header = self.__make_header(0x0,0x04, 0,seq_no,0)
                 mainSocket.sendto(header, otherHostAddress)
-            if(newHeader[2] == 0x1):
-                deliveredData = communication_box.decrypt(deliveredData)
             print("\t\tJust received %d bytes." % (len(deliveredData)))
             # The previous packet was the one we expected, so add its data to our buffer
-            #globalBuffer += deliveredData
-            fullMessage += deliveredData
-            nbytes -= len(deliveredData)
+            globalBuffer += deliveredData
             # Get ready to expect the next packet
             currentSeqNo += 1
         print("\t\tReturning to application layer...")
@@ -425,6 +441,10 @@ class socket:
             (data, senderAddress) = mainSocket.recvfrom(4096)
         except syssock.timeout:
             print("\t\tNo packets received before the timeout!")
+            z = [0,0,0,0,0,0,0,0,0,0,0,0]
+            return z
+        except syssock.error:
+            print("\t\tNo packets left in queue!")
             z = [0,0,0,0,0,0,0,0,0,0,0,0]
             return z
         
