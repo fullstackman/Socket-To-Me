@@ -131,6 +131,14 @@ def readKeyChain(filename):
                         publicKeys[(host,port)] = nacl.public.PublicKey(keyInHex, nacl.encoding.HexEncoder)
                         if(host == '*' and port == '*'):
                             default_public_key = publicKeys[(host,port)]
+            """
+            print ("These are the PUBLIC keys obtained:")       
+            for public_address in publicKeys:     
+                print ("%s\t\t:\t%s"% (public_address,publicKeysHex[public_address]) )        
+            print ("These are the PRIVATE keys obtained:")        
+            for private_address in privateKeys:       
+                print ("%s\t\t:\t%s"% (private_address,privateKeysHex[private_address]) )
+        """
         except Exception,e:
             print ( "error: opening keychain file: %s %s" % (filename,repr(e)))
     else:
@@ -194,8 +202,13 @@ class socket:
                 if(my_secret_key == -1):
                     print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
                     return
-                
+                """
+                print("\t We are checking against this address for public key:")
+                print("CHECKING THIS ADDRESS: at port %d" % (transmitter))
+                print(address[0])
+                """
                 for public_address in publicKeys:
+                    print("\t We are checking %s against %s for a public key." % ((address[0], transmitter), public_address))
                     if(public_address == (address[0], transmitter) ):
                         other_host_public_key = publicKeys[public_address]
                         break
@@ -245,6 +258,7 @@ class socket:
                     print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
                     return (0,0)
                 for public_address in publicKeys:
+                    print("\t We are checking %s against %s for a public key." % (otherHostAddress, public_address))
                     if(public_address == otherHostAddress ):
                         other_host_public_key = publicKeys[public_address]
                         break
