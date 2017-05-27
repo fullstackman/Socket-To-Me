@@ -123,6 +123,9 @@ def readKeyChain(filename):
                 # hash, we may have a valid host/key pair in the keychain
                 if ( (len(words) >= 4) and (words[0].find("#") == -1)):
                     host = words[1]
+                    #hardcode the value of localhost
+                    if(host == 'localhost'):
+                        host = '127.0.0.1'
                     port = words[2]
                     keyInHex = words[3]
                     if (words[0] == "private"):
@@ -162,7 +165,7 @@ class socket:
         if (len(args) >= 1): 
             address = args[0]
         #
-        print("\tInitiating a conection on %s" % (transmitter) )
+        print("\tInitiating a conection on %s" % str(address) )
         
         #  create a new sequence number
         currentSeqNo = int( random.randint(20, 100) )
@@ -192,8 +195,11 @@ class socket:
         if (len(args) >= 2):
             if (args[1] == ENCRYPT):
                 self.encrypt = True
+                #use the hardcoded value of localhost
+                if(address[0] == 'localhost'):
+                    address = ('127.0.0.1', str(receiver) )
                 for private_address in privateKeys:
-                    if(private_address == ('localhost',receiver)):
+                    if(private_address == (address[0],str(receiver))):
                         my_secret_key = privateKeys[private_address]
                         break
                 if(my_secret_key == -1):
@@ -203,7 +209,7 @@ class socket:
                     return
                 
                 for public_address in publicKeys:
-                    if(public_address == (address[0], transmitter) ):
+                    if(public_address == (address[0], str(transmitter)) ):
                         other_host_public_key = publicKeys[public_address]
                         break
                 if(other_host_public_key == -1):
@@ -224,9 +230,8 @@ class socket:
     def accept(self,*args):
         global ENCRYPT, mainSocket, receiver, currentSeqNo, communication_box, receiver
         global publicKeys, default_public_key, other_host_public_key, my_secret_key, default_secret_key
-        global window
 
-        print('\tWe are waiting for a connection on %s\n' % (receiver) )
+        print('\tWe are waiting for a connection\n' )
         flag = -1
         newHeader = ""
         # call  __sock352_get_packet() until we get a new connection
@@ -234,19 +239,20 @@ class socket:
             newHeader = self.__sock352_get_packet()
             flag = newHeader[1]
         currentSeqNo = newHeader[8]
-        #Advertise an empty window of the maximum size for this assignment
-        window = 32000
         #Acknowledge this new connection
         header = self.__make_header(0x0,0x04,0,currentSeqNo,13)
         mainSocket.sendto(header+"I accept you.", otherHostAddress)
-        
+        print('\tWe are connecting to %s' % str(otherHostAddress) )
+
         # Establish the encryption keys and box, if asked for
         self.encryption = False
         if (len(args) >= 1):
             if (args[0] == ENCRYPT):
                 self.encryption = True
+                #Formatting the port number into a string for proper comparison
+                tempOtherHost = (otherHostAddress[0],str(otherHostAddress[1]))
                 for private_address in privateKeys:
-                    if(private_address == ('localhost',receiver)):
+                    if(private_address == ('127.0.0.1',str(receiver))):
                         my_secret_key = privateKeys[private_address]
                         break
                 if(my_secret_key == -1):
@@ -255,7 +261,7 @@ class socket:
                     print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
                     return (0,0)
                 for public_address in publicKeys:
-                    if(public_address == otherHostAddress ):
+                    if(public_address == tempOtherHost ):
                         other_host_public_key = publicKeys[public_address]
                         break
                 if(other_host_public_key == -1):
