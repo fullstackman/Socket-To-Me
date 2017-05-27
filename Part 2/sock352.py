@@ -119,6 +119,8 @@ def readKeyChain(filename):
                 # hash, we may have a valid host/key pair in the keychain
                 if ( (len(words) >= 4) and (words[0].find("#") == -1)):
                     host = words[1]
+                    if(host == 'localhost'):
+                        host = '127.0.0.1'
                     port = words[2]
                     keyInHex = words[3]
                     if (words[0] == "private"):
@@ -131,14 +133,6 @@ def readKeyChain(filename):
                         publicKeys[(host,port)] = nacl.public.PublicKey(keyInHex, nacl.encoding.HexEncoder)
                         if(host == '*' and port == '*'):
                             default_public_key = publicKeys[(host,port)]
-            """
-            print ("These are the PUBLIC keys obtained:")       
-            for public_address in publicKeys:     
-                print ("%s\t\t:\t%s"% (public_address,publicKeysHex[public_address]) )        
-            print ("These are the PRIVATE keys obtained:")        
-            for private_address in privateKeys:       
-                print ("%s\t\t:\t%s"% (private_address,privateKeysHex[private_address]) )
-        """
         except Exception,e:
             print ( "error: opening keychain file: %s %s" % (filename,repr(e)))
     else:
@@ -166,7 +160,7 @@ class socket:
         if (len(args) >= 1): 
             address = args[0]
         #
-        print("\tInitiating a conection on %s" % (transmitter) )
+        print("\tInitiating a conection on %s" % str(address) )
         
         #  create a new sequence number
         currentSeqNo = int( random.randint(20, 100) )
@@ -193,8 +187,10 @@ class socket:
         if (len(args) >= 2):
             if (args[1] == ENCRYPT):
                 self.encrypt = True
+                if(address[0] == 'localhost'):
+                    address = ('127.0.0.1', str(receiver) )
                 for private_address in privateKeys:
-                    if(private_address == ('localhost',receiver)):
+                    if(private_address == (address[0],str(receiver))):
                         my_secret_key = privateKeys[private_address]
                         break
                 if(my_secret_key == -1):
@@ -202,14 +198,10 @@ class socket:
                 if(my_secret_key == -1):
                     print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
                     return
-                """
-                print("\t We are checking against this address for public key:")
-                print("CHECKING THIS ADDRESS: at port %d" % (transmitter))
-                print(address[0])
-                """
+                
                 for public_address in publicKeys:
-                    print("\t We are checking %s against %s for a public key." % ((address[0], transmitter), public_address))
-                    if(public_address == (address[0], transmitter) ):
+                    #print("\t We are checking %s against %s for a public key." % ((address[0], transmitter), public_address))
+                    if(public_address == (address[0], str(transmitter)) ):
                         other_host_public_key = publicKeys[public_address]
                         break
                 if(other_host_public_key == -1):
@@ -217,6 +209,7 @@ class socket:
                 if(other_host_public_key == -1):
                     print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
                     return
+                #print('\tThis is my secret key | their private key:\t %s | %s' % (my_secret_key, other_host_public_key))
                 communication_box = Box(my_secret_key,other_host_public_key)
             else:
                 print ("\tInvalid encryption flag! Self-destructing now . . .")
@@ -231,7 +224,7 @@ class socket:
         global ENCRYPT, mainSocket, receiver, currentSeqNo, communication_box, receiver
         global publicKeys, default_public_key, other_host_public_key, my_secret_key, default_secret_key
 
-        print('\tWe are waiting for a connection on %s\n' % (receiver) )
+        print('\tWe are waiting for a connection\n' )
         flag = -1
         newHeader = ""
         # call  __sock352_get_packet() until we get a new connection
@@ -242,14 +235,16 @@ class socket:
         #Acknowledge this new connection
         header = self.__make_header(0x0,0x04,0,currentSeqNo,13)
         mainSocket.sendto(header+"I accept you.", otherHostAddress)
-        
+        print('\tWe are connecting to %s' % str(otherHostAddress) )
+
         # Establish the encryption keys and box, if asked for
         self.encryption = False
         if (len(args) >= 1):
             if (args[0] == ENCRYPT):
                 self.encryption = True
+                tempOtherHost = (otherHostAddress[0],str(otherHostAddress[1]))
                 for private_address in privateKeys:
-                    if(private_address == ('localhost',receiver)):
+                    if(private_address == ('127.0.0.1',str(receiver))):
                         my_secret_key = privateKeys[private_address]
                         break
                 if(my_secret_key == -1):
@@ -258,8 +253,8 @@ class socket:
                     print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
                     return (0,0)
                 for public_address in publicKeys:
-                    print("\t We are checking %s against %s for a public key." % (otherHostAddress, public_address))
-                    if(public_address == otherHostAddress ):
+                    #print("\t We are checking %s against %s for a public key." % (tempOtherHost, public_address))
+                    if(public_address == tempOtherHost ):
                         other_host_public_key = publicKeys[public_address]
                         break
                 if(other_host_public_key == -1):
@@ -267,6 +262,7 @@ class socket:
                 if(other_host_public_key == -1):
                     print("\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
                     return (0,0)
+                #print('\tThis is my secret key | their private key:\t %s | %s' % (my_secret_key, other_host_public_key))
                 communication_box = Box(my_secret_key,other_host_public_key)
             else:
                 print ("\tInvalid encryption flag! Self-destructing now . . .")
